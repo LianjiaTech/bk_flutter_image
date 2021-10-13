@@ -35,4 +35,3 @@ BkFlutterImage(
 
 ## 版本历史
 具体版本历史请参看 [CHANGELOG.md](./CHANGELOG.md)。
-
