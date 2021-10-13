@@ -19,7 +19,7 @@
 # VS Code which you may wish to be included in version control, so this line
 # is commented out by default.
 #.vscode/
-.DS_Store
+
 # Flutter/Dart/Pub related
 **/doc/api/
 .dart_tool/
@@ -28,17 +28,7 @@
 .packages
 .pub-cache/
 .pub/
-.idea/
 /build/
-iOS/.symlinks
-iOS/pubspec.lock
-iOS/Flutter/App.framework
-iOS/Flutter/Flutter.framework
-iOS/Flutter/Generated.xcconfig
-iOS/Flutter/flutter_export_environment.sh
-iOS/Flutter/.last_build_id
-ios/Pods
-ios/Runner.xcworkspace/xcuserdata/*
 
 # Web related
 lib/generated_plugin_registrant.dart
