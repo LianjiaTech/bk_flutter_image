@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:bk_flutter_image/bk_flutter_image.dart';
 
+import 'exts.dart';
 
 void main() => runApp(MyApp());
 
@@ -34,14 +35,16 @@ class _MainPageState extends State<MainPage> {
   double width = 300;
   double height = 300;
   bool useFlutterImage = false;
-  String imageUrl = "https://timgsa.baidu.com/timg?image&quality=80&size=b9999_10000&sec=1596550471997&di=8dfa856a560a15f923dba09574aae15c&imgtype=0&src=http%3A%2F%2Fa2.att.hudong.com%2F36%2F48%2F19300001357258133412489354717.jpg";
+  String imageUrl = 'https://images.pexels.com/photos/4678697/pexels-photo-4678697.jpeg';
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title:Text('flutter 使用原生image view'),actions: <Widget>[
         IconButton(icon: Icon(Icons.list), onPressed: (){
-//        Navigator.pushNamed(context, routeName)
+          Navigator.push(context, MaterialPageRoute(builder: (c) {
+            return GridListDemo();
+          }));
         })
       ],),
       body: Stack(
