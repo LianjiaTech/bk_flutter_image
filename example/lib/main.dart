@@ -34,17 +34,21 @@ class _MainPageState extends State<MainPage> {
 
   double width = 300;
   double height = 300;
-  bool useFlutterImage = false;
-  String imageUrl = 'https://images.pexels.com/photos/4678697/pexels-photo-4678697.jpeg';
+  BoxFit fit = BoxFit.cover;
+  bool useFlutterImage = true;
+  String imageUrl ='https://image2.ljcdn.com/utopia-file/p1/215a16c18b2c6ad44a61ff077f12b64fd937398c-3840-2560!m_fit,w_2560,o_auto,f_jpg';
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title:Text('flutter 使用原生image view'),actions: <Widget>[
         IconButton(icon: Icon(Icons.list), onPressed: (){
-          Navigator.push(context, MaterialPageRoute(builder: (c) {
+          Navigator.push(context, DialogRoute(context: context, builder: (c) {
             return GridListDemo();
           }));
+          // Navigator.push(context, MaterialPageRoute(builder: (c) {
+          //   return GridListDemo();
+          // }));
         })
       ],),
       body: Stack(
@@ -63,7 +67,7 @@ class _MainPageState extends State<MainPage> {
                     Slider(
                         value: width,
                         min: 100,
-                        max: 400,
+                        max: 500,
                         onChanged: (value) {
                           setState(() {
                             width = value.roundToDouble();
@@ -77,7 +81,7 @@ class _MainPageState extends State<MainPage> {
                     Slider(
                         value: height,
                         min: 100,
-                        max: 400,
+                        max: 500,
                         onChanged: (value) {
                           setState(() {
                             height = value.roundToDouble();
@@ -87,7 +91,7 @@ class _MainPageState extends State<MainPage> {
                 ),
                 Row(
                   children: <Widget>[
-                    Text('是否使用原生层加载图片'),
+                    Text('使用Texture加载图片: $useFlutterImage'),
                     Checkbox(
                       value: useFlutterImage,
                       onChanged: (value) {
@@ -95,7 +99,61 @@ class _MainPageState extends State<MainPage> {
                           useFlutterImage = value;
                         });
                       },
-                    )
+                    ),
+                    Text('Cover:'),
+                    Checkbox(
+                      value: fit == BoxFit.cover,
+                      onChanged: (value) {
+                        setState(() {
+                          fit = value ? BoxFit.cover : BoxFit.none;
+                        });
+                      },
+                    ),
+                    Text('Contain:'),
+                    Checkbox(
+                      value: fit == BoxFit.contain,
+                      onChanged: (value) {
+                        setState(() {
+                          fit = value ? BoxFit.contain : BoxFit.none;
+                        });
+                      },
+                    ),
+                    Text('fill:'),
+                    Checkbox(
+                      value: fit == BoxFit.fill,
+                      onChanged: (value) {
+                        setState(() {
+                          fit = value ? BoxFit.fill : BoxFit.none;
+                        });
+                      },
+                    ),
+                    Text('fitWidth:'),
+                    Checkbox(
+                      value: fit == BoxFit.fitWidth,
+                      onChanged: (value) {
+                        setState(() {
+                          fit = value ? BoxFit.fitWidth : BoxFit.none;
+                        });
+                      },
+                    ),
+                    Text('fitHeight:'),
+                    Checkbox(
+                      value: fit == BoxFit.fitHeight,
+                      onChanged: (value) {
+                        setState(() {
+                          fit = value ? BoxFit.fitHeight : BoxFit.none;
+                        });
+                      },
+                    ),
+                    Text('scale:'),
+                    Checkbox(
+                      value: fit == BoxFit.scaleDown,
+                      onChanged: (value) {
+                        setState(() {
+                          fit = value ? BoxFit.scaleDown : BoxFit.none;
+                        });
+                      },
+                    ),
                   ],
                 ),
               ],
@@ -103,23 +161,26 @@ class _MainPageState extends State<MainPage> {
           ),
           Center(
             child: SafeArea(
-              child: Container(
-                width: width,
-                height: height,
-                child: useFlutterImage
-                    ? BkFlutterImage(
-                        url: imageUrl,
-                        width: width,
-                        height: height,
-                        centerCrop: true,
-                      )
-                    : Image.network(
-                        imageUrl,
-                        fit: BoxFit.cover,
-                        width: width,
-                        height: height,
-                      ),
-              ),
+              child:Column(
+                children:[
+                  Container(// width: 400,
+                  // height: 100,
+                  child: useFlutterImage
+                      ? BkFlutterImage(
+                    url: imageUrl,
+                    height: height,
+                    width: width,
+                    fit: fit,
+                  )
+                      : Image.network(
+                    imageUrl,
+                    fit: fit,
+                    width: width,
+                    height: height,
+                  ),
+
+                ), ]),
+
             ),
           )
         ],

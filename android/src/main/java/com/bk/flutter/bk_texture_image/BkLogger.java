@@ -4,7 +4,7 @@ import io.flutter.Log;
 
 public final class BkLogger {
   private static final String TAG = "TextureImageLogger";
-  private static final boolean DEVELOP = true;
+  private static final boolean DEVELOP = BuildConfig.DEBUG;
 
   public static void i(Object msg) {
     if (DEVELOP) {
@@ -27,6 +27,14 @@ public final class BkLogger {
       android.util.Log.v(TAG, String.valueOf(msg));
     } else {
       Log.v(TAG, String.valueOf(msg));
+    }
+  }
+
+  public static void w(Object msg) {
+    if (DEVELOP) {
+      android.util.Log.w(TAG, String.valueOf(msg));
+    } else {
+      Log.w(TAG, String.valueOf(msg));
     }
   }
 

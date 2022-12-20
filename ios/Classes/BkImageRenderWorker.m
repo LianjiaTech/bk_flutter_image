@@ -6,18 +6,7 @@
 #import "UIImageView+WebCache.h"
 #import "SDWebImageDownloader.h"
 #import "SDImageCache.h"
-
-#import "UIImage+BKFlutterFit.h"
-
-typedef NS_ENUM(NSUInteger, BeiKeBoxFit) {
-    BeiKeBoxFitFill = 0,
-    BeiKeBoxFitContain = 1,
-    BeiKeBoxFitCover = 2,
-    BeiKeBoxFitWidth = 3,
-    BeiKeBoxFitHeight = 4,
-    BeiKeBoxFitNone = 5,
-    BeiKeBoxFitScaleDown = 6,
-};
+#import "BkFlutterPixelBufferCache.h"
 
 @interface BkImageRenderWorker ()
 
@@ -27,18 +16,15 @@ typedef NS_ENUM(NSUInteger, BeiKeBoxFit) {
 @property (nonatomic, assign) CGFloat height;
 @property (nonatomic, assign) CGFloat widthPixel;
 @property (nonatomic, assign) CGFloat heightPixel;
-@property (nonatomic, assign) BOOL centerCrop;
 @property (nonatomic, assign) BOOL autoResize;
-@property (nonatomic, assign) BeiKeBoxFit imageFitMode;
-@property (nonatomic, copy) void (^onNewFrame)(bool success);
-
-@property (nonatomic, strong) UIImage *image;
+@property (nonatomic, copy) void (^onNewFrame)(NSError* error, CGSize size, BOOL isFullPixel);
+@property (nonatomic, strong) BkFlutterPixelBufferRef *pixelBufferRef;
 
 @end
 
 @implementation BkImageRenderWorker
 
-- (instancetype)initWithParams:(NSDictionary *)params onNewFrame:(void (^)(bool success))onNewFrame {
+- (instancetype)initWithParams:(NSDictionary *)params onNewFrame:(void (^)(NSError* error, CGSize size, BOOL isFullPixel))onNewFrame {
     self = [super init];
 
     if (self) {
@@ -52,168 +38,56 @@ typedef NS_ENUM(NSUInteger, BeiKeBoxFit) {
 - (void)initParams:(NSDictionary *)params {
     _url = params[@"url"];
     _aspectRatio = [[UIScreen mainScreen] scale];
-
-    if (params[@"width"])
-        _width = [params[@"width"] floatValue] * _aspectRatio;
-
-    if (params[@"height"])
-        _height = [params[@"height"] floatValue] * _aspectRatio;
-
-    if (params[@"widthPixel"])
-        _widthPixel = [params[@"widthPixel"] floatValue] * _aspectRatio;;
-
-    if (params[@"heightPixel"])
-        _heightPixel = [params[@"heightPixel"] floatValue] * _aspectRatio;
-
-    if (params[@"centerCrop"])
-        _centerCrop = [params[@"centerCrop"] boolValue];;
-
-    if (params[@"imageFitMode"])
-        _imageFitMode = [params[@"imageFitMode"] integerValue];;
-
     if (params[@"autoResize"])
         _autoResize = [params[@"autoResize"] boolValue];
+
+    if (params[@"width"] && params[@"height"]) {
+        //图片像素值没有小数
+        _width =  floor([params[@"width"] floatValue] * _aspectRatio);
+        _height = floor([params[@"height"] floatValue] * _aspectRatio);
+    } else {
+        _width = -1;
+        _height = -1;
+    }
+
 }
 
 - (void)startWork{
-    
-    NSDictionary *context = _autoResize ? @{SDWebImageContextImageThumbnailPixelSize:@(CGSizeMake(_width, _height))}: NULL;
-    UIImage *image = [[SDImageCache sharedImageCache] imageFromCacheForKey:self.url options:0 context:context];
-    
-    if (!image) {
-        __weak typeof(self) weakSelf = self;
-        [[SDWebImageDownloader sharedDownloader] downloadImageWithURL:[[NSURL alloc] initWithString:self.url] options:SDWebImageDownloaderScaleDownLargeImages | SDWebImageDownloaderUseNSURLCache | SDWebImageDownloaderAvoidDecodeImage context:context progress:nil completed:^(UIImage * _Nullable image, NSData * _Nullable data, NSError * _Nullable error, BOOL finished) {
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (!error && image) {
-                [strongSelf callImage:[strongSelf convertImage:image]];
-                [[SDImageCache sharedImageCache] storeImage:image forKey:strongSelf.url completion:nil];
-            } else {
-                [strongSelf callImage:nil];
-            }
-        }];
+    __weak typeof(self) weakSelf = self;
+    [[BkFlutterPixelBufferCache sharedInstance] loadImageAndPixelBuffer:self.url size:_autoResize ? CGSizeMake(_width, _height) : CGSizeMake(-1, -1) completion:^(BkFlutterPixelBufferRef * _Nonnull buffer, NSError* error, BOOL isFullPixel) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        [strongSelf callBufferRef:buffer isFullPixel:isFullPixel error:error];
+    }];
+}
+
+- (void)callBufferRef:(BkFlutterPixelBufferRef *)buffer isFullPixel:(BOOL)isFullPixel error:(NSError *)error{
+    if (buffer && !error) {
+        self.pixelBufferRef = buffer;
+        CGSize size = CGSizeMake(CVPixelBufferGetWidth(buffer.ref) / _aspectRatio, CVPixelBufferGetHeight(buffer.ref) / _aspectRatio);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.onNewFrame(nil, size,isFullPixel);
+        });
     } else {
-        [self callImage:image];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.onNewFrame(error, CGSizeZero, isFullPixel);
+        });
     }
 }
 
-- (void)callImage:(UIImage *)image {
-    self.image = image;
-    bool success = self.image ? YES : NO;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        self.onNewFrame(success);
-    });
-}
-
-- (UIImage *)convertImage:(UIImage *)image {
-    if (!image) return nil;
-
-    CGSize size = CGSizeMake(_width, _height);
-    switch (_imageFitMode) {
-        case BeiKeBoxFitFill:
-            return [image bkfFill:size];
-            break;
-        case BeiKeBoxFitContain:
-            return [image bkfContain:size];
-            break;
-        case BeiKeBoxFitCover:
-            return [image bkfCover:size];
-            break;
-        case BeiKeBoxFitWidth:
-            return [image bkfFitWidth:size];
-            break;
-        case BeiKeBoxFitHeight:
-            return [image bkfFitHeight:size];
-            break;
-        case BeiKeBoxFitNone:
-            return [image bkfFitNone:size];
-        case BeiKeBoxFitScaleDown:
-            return [image bkfScaleDown:size];
-            break;
-        default:
-            return [image bkfFill:size];
-            break;
-    }
-    return image;
-}
 
 #pragma mark - FlutterTexture
 
 - (CVPixelBufferRef)copyPixelBuffer{
-    return [self bkf_CVPixelBufferRef];
-}
-
-- (void)onTextureUnregistered:(NSObject<FlutterTexture>*)texture {
-    _image = nil;
-}
-
-#pragma mark - Private
-
-static OSType bkf_inputPixelFormat() {
-    return kCVPixelFormatType_32BGRA;
-}
-
-static uint32_t bkf_bitmapInfoWithPixelFormatType(OSType inputPixelFormat, bool hasAlpha) {
-    if (inputPixelFormat == kCVPixelFormatType_32BGRA) {
-        uint32_t bitmapInfo = kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host;
-        if (!hasAlpha)
-            bitmapInfo = kCGImageAlphaNoneSkipFirst | kCGBitmapByteOrder32Host;
-        return bitmapInfo;
-    } else if (inputPixelFormat == kCVPixelFormatType_32ARGB) {
-        return kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Big;
-    } else
-        return 0;
-}
-
-BOOL bkf_CGImageRefContainsAlpha(CGImageRef imageRef) {
-    if (!imageRef) {
-        return NO;
-    }
-    CGImageAlphaInfo alphaInfo = CGImageGetAlphaInfo(imageRef);
-    BOOL hasAlpha = !(alphaInfo == kCGImageAlphaNone || alphaInfo == kCGImageAlphaNoneSkipFirst ||alphaInfo == kCGImageAlphaNoneSkipLast);
-    return hasAlpha;
-}
-
-- (CVPixelBufferRef)bkf_CVPixelBufferRef
-{
-    if (_image) {
-        CGImageRef image = [_image CGImage];
-        GLuint width = (GLuint)CGImageGetWidth(image);
-        GLuint height = (GLuint)CGImageGetHeight(image);
-        CGSize size = CGSizeMake(width, height);
-        BOOL hasAlpha = bkf_CGImageRefContainsAlpha(image);
-
-        CFDictionaryRef empty = CFDictionaryCreate(kCFAllocatorDefault, NULL, NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-        NSDictionary *options = [NSDictionary dictionaryWithObjectsAndKeys:
-                                 @(YES), kCVPixelBufferCGImageCompatibilityKey,
-                                 @(YES), kCVPixelBufferCGBitmapContextCompatibilityKey,
-                                 empty, kCVPixelBufferIOSurfacePropertiesKey, nil];
-
-        CVPixelBufferRef pxbuffer = NULL;
-        CVReturn status = CVPixelBufferCreate(kCFAllocatorDefault, size.width, size.height, bkf_inputPixelFormat(), (__bridge CFDictionaryRef) options, &pxbuffer);
-        NSParameterAssert(status == kCVReturnSuccess && pxbuffer != NULL);
-
-        CVPixelBufferLockBaseAddress(pxbuffer, 0);
-        void *pxdata = CVPixelBufferGetBaseAddress(pxbuffer);
-        NSParameterAssert(pxdata != NULL);
-
-        CGColorSpaceRef rgbColorSpace = CGColorSpaceCreateDeviceRGB();
-        uint32_t bitmapInfo = bkf_bitmapInfoWithPixelFormatType(bkf_inputPixelFormat(), (bool)hasAlpha);
-        CGContextRef context = CGBitmapContextCreate(pxdata, size.width, size.height, 8, CVPixelBufferGetBytesPerRow(pxbuffer), rgbColorSpace, bitmapInfo);
-
-        NSParameterAssert(context);
-        CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
-        CVPixelBufferUnlockBaseAddress(pxbuffer, 0);
-        CFRelease(empty);
-        CGColorSpaceRelease(rgbColorSpace);
-        CGContextRelease(context);
-        return pxbuffer;
+    if (self.pixelBufferRef) {
+        CVPixelBufferRetain(self.pixelBufferRef.ref);
+        return self.pixelBufferRef.ref;
     } else {
         return NULL;
     }
 }
 
-- (void)dealloc {
-    NSLog(@"BkImageRenderWorker---dealloc");
+- (void)onTextureUnregistered:(NSObject<FlutterTexture>*)texture {
+    _pixelBufferRef = nil;
 }
 
 @end

@@ -8,8 +8,6 @@ import android.graphics.PaintFlagsDrawFilter;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.os.Debug;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.Surface;
 
 import androidx.annotation.NonNull;
@@ -21,10 +19,14 @@ import com.bumptech.glide.load.DataSource;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.load.engine.GlideException;
 import com.bumptech.glide.load.engine.bitmap_recycle.BitmapPool;
+import com.bumptech.glide.load.engine.cache.MemoryCache;
+import com.bumptech.glide.load.resource.bitmap.BitmapEncoder;
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy;
 import com.bumptech.glide.request.RequestListener;
 import com.bumptech.glide.request.RequestOptions;
 import com.bumptech.glide.request.target.Target;
+import com.bumptech.glide.util.Executors;
+import com.bumptech.glide.util.Util;
 
 import io.flutter.embedding.engine.plugins.activity.ActivityAware;
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
@@ -48,6 +50,7 @@ public class BkFlutterImagePlugin implements FlutterPlugin, MethodCallHandler,
   private static final String CHANNEL_NAME = "bk_flutter_image";
   private static final String METHOD_CREATE = "create";
   private static final String METHOD_DISPOSE = "dispose";
+  private static final String METHOD_CACHE = "setCacheSize";
   private static final String METHOD_UPDATE = "updateUrl";
   private static final String TAG = "BkFlutterImagePlugin";
 
@@ -87,11 +90,13 @@ public class BkFlutterImagePlugin implements FlutterPlugin, MethodCallHandler,
   @Override
   public void onMethodCall(@NonNull MethodCall call, @NonNull Result result) {
     try {
-      if (METHOD_CREATE.equals(call.method) || METHOD_UPDATE.equals(call.method)) {
+      if (METHOD_CREATE.equals(call.method)) {
         createTextureImage(call, result);
       } else if (METHOD_DISPOSE.equals(call.method)) {
         disposeTextureImage(call, result);
-      } else {
+      } else if (METHOD_CACHE.equals(call.method)) {
+        setMaxCacheSize(call, result);
+      }else {
         result.notImplemented();
       }
     } catch (Exception e) {
@@ -99,20 +104,21 @@ public class BkFlutterImagePlugin implements FlutterPlugin, MethodCallHandler,
     }
   }
 
+  private void setMaxCacheSize(MethodCall call, Result result) {
+    double memoryMaxSize = call.argument("memoryMaxSize");;
+    double diskMaxSize = call.argument("diskMaxSize");
+    mRecordManager.setCacheMaxSize(diskMaxSize, memoryMaxSize);
+  }
 
   private void createTextureImage(MethodCall call, Result result) {
     BkCallArgs args = new BkCallArgs(call);
 
-    BkTextureRecord textureRecord = mRecordManager.find(args.uniqueKey());
+    BkTextureRecord textureRecord = mRecordManager.findReusableByCall(args);
 
-    if (textureRecord != null && textureRecord.getTextureEntry() != null && textureRecord.isValid()) {
-      if (METHOD_CREATE.equals(call.method)) {
-        // 当前textureRecord 引用计数 +1
-        textureRecord.getRefCount().getAndIncrement();
-      }
-      safeReply(result, textureRecord.getTextureId());
+    if (textureRecord != null && textureRecord.isValid()) {
+      safeReply(result, textureRecord.response());
     } else {
-      BkTextureRecord record = new BkTextureRecord(args.uniqueKey(), mTextureRegistry.createSurfaceTexture());
+      BkTextureRecord record = new BkTextureRecord(args, mTextureRegistry.createSurfaceTexture());
       mRecordManager.add(record);
       args.setTextureId(record.getTextureId());
       loadTextureImage(args, result, record);
@@ -123,12 +129,9 @@ public class BkFlutterImagePlugin implements FlutterPlugin, MethodCallHandler,
   private void disposeTextureImage(MethodCall call, Result result) {
     try {
       final int textureId = call.argument("textureId");
-      BkTextureRecord record = mRecordManager.findUnusedById(textureId);
+      BkTextureRecord record = mRecordManager.maybeCacheAndReleaseOldest(textureId);
       if (record != null) {
-        if (record.isValid()) {
-          record.tryRelease();
-        }
-        mRecordManager.remove(record);
+        BkLogger.d("release texture memory : " + record);
       }
     } catch (Exception e) {
       e.printStackTrace();
@@ -139,21 +142,24 @@ public class BkFlutterImagePlugin implements FlutterPlugin, MethodCallHandler,
 
     final String url = callArgs.url;
 
-    final BitmapPool pool = Glide.get(mContext).getBitmapPool();
     Glide.get(mContext).setMemoryCategory(MemoryCategory.LOW);
     final boolean autoResize = callArgs.autoResize;
-
-    RequestOptions options = new RequestOptions().diskCacheStrategy(DiskCacheStrategy.RESOURCE).downsample(DownsampleStrategy.AT_MOST);
+    textureRecord.setFullPixel(!autoResize);
+    RequestOptions options = new RequestOptions()
+            .diskCacheStrategy(DiskCacheStrategy.ALL)
+            .downsample(DownsampleStrategy.DEFAULT);
     if (autoResize) {
-      options = options.override(widthPixels, heightPixels);
+      options = options.override(Math.min(callArgs.width, MAX_PIXELS), Math.min(callArgs.height, MAX_PIXELS));
     }
 
     Glide.with(mContext).asBitmap().load(url).listener(new RequestListener<Bitmap>() {
       @Override
       public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Bitmap> target, boolean isFirstResource) {
         BkLogger.d("glide onLoadFailed callArgs=" + callArgs.toString());
-        safeReply(result, -1);
-        return false;
+        textureRecord.setTextureValid(false);
+        textureRecord.setError(e != null ? e.getMessage() : "");
+        safeReply(result, textureRecord.response());
+        return true;
       }
 
       @Override
@@ -161,10 +167,11 @@ public class BkFlutterImagePlugin implements FlutterPlugin, MethodCallHandler,
         try {
           int targetWidth = Math.min(resource.getWidth(), MAX_PIXELS);
           int targetHeight = Math.min(resource.getHeight(), MAX_PIXELS);
+          textureRecord.setTextureWH(targetWidth, targetHeight);
+
           BkLogger.d("glide onResourceReady w:h = " + targetWidth + ":" + targetHeight + ", fr:" + isFirstResource + ", ds:" +dataSource);
           // 画布显示区域
           Rect canvasRect = new Rect(0, 0, targetWidth, targetHeight);
-
           SurfaceTexture surfaceTexture = textureRecord.getTextureEntry().surfaceTexture();
           Surface surface = new Surface(surfaceTexture);
           if (!surface.isValid()) {
@@ -175,24 +182,25 @@ public class BkFlutterImagePlugin implements FlutterPlugin, MethodCallHandler,
           Canvas canvas = surface.lockCanvas(canvasRect);
 
           // 图片显示区域
-          Rect dstRect = BkBitmapUtils.getBitmapRect(resource, targetWidth, targetHeight, callArgs.imageFitMode);
+          Rect dstRect = new Rect(0, 0, targetWidth, targetHeight);
 
           // 图片是否scale ？
-          Bitmap scaleBitmap = BkBitmapUtils.tryScaleBitmap(pool, resource, targetWidth, targetHeight, callArgs.imageFitMode);
           canvas.setDrawFilter(new PaintFlagsDrawFilter(0, Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG));
-          canvas.drawBitmap(scaleBitmap, null, dstRect, null);
+          canvas.drawBitmap(resource, null, dstRect, null);
 
           surface.unlockCanvasAndPost(canvas);
           surface.release();
 
-          safeReply(result, callArgs.textureId);
+          safeReply(result, textureRecord.response());
 
         } catch (Exception e) {
           e.printStackTrace();
           BkLogger.d("glide onResourceReady Exception callArgs=" + callArgs.toString());
           //result.success(-1);
           //标志纹理失败
-          textureRecord.getTextureValid().set(false);
+          textureRecord.setError(e.getMessage());
+          textureRecord.setTextureValid(false);
+          safeReply(result, textureRecord.response());
         } finally {
           long nativeHeapAllocatedSize = Debug.getNativeHeapAllocatedSize();
           if (nativeHeapAllocatedSize >= LIMIT_NATIVE_HEAP_SIZE) {
@@ -203,7 +211,7 @@ public class BkFlutterImagePlugin implements FlutterPlugin, MethodCallHandler,
 
         return false;
       }
-    }).apply(options).submit();
+    }).apply(options).preload();
 
 
   }
@@ -214,12 +222,12 @@ public class BkFlutterImagePlugin implements FlutterPlugin, MethodCallHandler,
     cleanResource();
   }
 
-  private void safeReply(final MethodChannel.Result result, final long textureId) {
-    new Handler(Looper.getMainLooper()).post(new Runnable() {
+  private void safeReply(final MethodChannel.Result result, final String response) {
+    Executors.mainThreadExecutor().execute(new Runnable() {
       @Override
       public void run() {
         try {
-          result.success(textureId);
+          result.success(response);
         } catch (Exception e) {
           BkLogger.d("safeReply MainLooper Exception =" + e.getLocalizedMessage());
         }
@@ -233,7 +241,7 @@ public class BkFlutterImagePlugin implements FlutterPlugin, MethodCallHandler,
 
   private void clearGlideMemory() {
     try {
-      if (Looper.myLooper() == Looper.getMainLooper()) {
+      if (Util.isOnMainThread()) {
         Glide.get(mContext).clearMemory();
       }
     } catch (Exception e) {

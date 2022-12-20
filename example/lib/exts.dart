@@ -22,12 +22,14 @@ class Photo {
     this.title,
     this.caption,
     this.isFavorite = false,
+    this.mode=BoxFit.fill,
   });
 
   final String url;
   final String assetPackage;
   final String title;
   final String caption;
+  final BoxFit mode;
 
   bool isFavorite;
   String get tag => url; // Assuming that all asset names are unique.
@@ -129,18 +131,22 @@ class _GridPhotoViewerState extends State<GridPhotoViewer> with SingleTickerProv
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      // onScaleStart: _handleOnScaleStart,
-      // onScaleUpdate: _handleOnScaleUpdate,
-      // onScaleEnd: _handleOnScaleEnd,
+      onScaleStart: _handleOnScaleStart,
+      onScaleUpdate: _handleOnScaleUpdate,
+      onScaleEnd: _handleOnScaleEnd,
       child: ClipRect(
         child: Transform(
           transform: Matrix4.identity()
             ..translate(_offset.dx, _offset.dy)
             ..scale(_scale),
-          child: BkFlutterImage(
+          child:
+              // Image.network(widget.photo.url,),
+          BkFlutterImage(
             url: widget.photo.url,
+            width: 150,
+            height: 150,
             //package: widget.photo.assetPackage,
-            imageFitMode: BoxFit.cover,
+            fit: BoxFit.contain,
             autoResize: false,
           ),
         ),
@@ -188,9 +194,12 @@ class GridDemoPhotoItem extends StatelessWidget {
       onTap: () { showPhoto(context); },
       child: BkFlutterImage(
         url: photo.url,
-        //package: photo.assetPackage,
-        imageFitMode: BoxFit.cover,
+        fit: photo.mode,
+        placeholder: 'images/01.jpg',
         autoResize: true,
+        imageErrorBuilder: (BuildContext context,Object error,StackTrace stacktrace){
+          return Text(error);
+        },
       ),
     );
 
@@ -252,79 +261,60 @@ class GridListDemoState extends State<GridListDemo> {
     super.dispose();
   }
 
+ @override
+ @override
+ void initState() {
+   super.initState();
+    for(int i = 0; i < 10; i ++) {
+      photos.addAll(allModephotos(i));
+    }
+ }
+
+  List<Photo> allModephotos(int i){
+    List<Photo> temp =   <Photo>[
+      Photo(
+      url: photosUrls[i],
+      assetPackage: _kGalleryAssetsPackage,
+      title: 'BoxFit.fill',
+      caption: 'Fisherman',mode: BoxFit.fill,
+    ),
+      Photo(
+        url: photosUrls[i],
+        assetPackage: _kGalleryAssetsPackage,
+        title: 'BoxFit.cover',
+        caption: 'Fisherman',mode: BoxFit.cover,
+      ),
+      Photo(
+        url: photosUrls[i],
+        assetPackage: _kGalleryAssetsPackage,
+        title: 'BoxFit.contain',
+        caption: 'Fisherman',mode: BoxFit.contain,
+      ),
+      Photo(
+        url: photosUrls[i],
+        assetPackage: _kGalleryAssetsPackage,
+        title: 'BoxFit.fitWidth',
+        caption: 'Fisherman',mode: BoxFit.fitWidth,
+      ),
+      Photo(
+        url: photosUrls[i],
+        assetPackage: _kGalleryAssetsPackage,
+        title: 'BoxFit.fitHeight',
+        caption: 'Fisherman',
+        mode: BoxFit.fitHeight,
+      ),
+      Photo(
+        url: photosUrls[i],
+        assetPackage: _kGalleryAssetsPackage,
+        title: 'BoxFit.scaleDown',
+        caption: 'Fisherman',
+        mode: BoxFit.scaleDown,
+      ),
+    ];
+    return temp;
+  }
+
   List<Photo> photos = <Photo>[
-    Photo(
-      url: photosUrls[0],
-      assetPackage: _kGalleryAssetsPackage,
-      title: 'Chennai',
-      caption: 'Flower Market',
-    ),
-    Photo(
-      url: photosUrls[1],
-      assetPackage: _kGalleryAssetsPackage,
-      title: 'Tanjore',
-      caption: 'Bronze Works',
-    ),
-    Photo(
-      url: photosUrls[2],
-      assetPackage: _kGalleryAssetsPackage,
-      title: 'Tanjore',
-      caption: 'Market',
-    ),
-    Photo(
-      url: photosUrls[3],
-      assetPackage: _kGalleryAssetsPackage,
-      title: 'Tanjore',
-      caption: 'Thanjavur Temple',
-    ),
-    Photo(
-      url: photosUrls[4],
-      assetPackage: _kGalleryAssetsPackage,
-      title: 'Tanjore',
-      caption: 'Thanjavur Temple',
-    ),
-    Photo(
-      url: photosUrls[5],
-      assetPackage: _kGalleryAssetsPackage,
-      title: 'Pondicherry',
-      caption: 'Salt Farm',
-    ),
-    Photo(
-      url: photosUrls[6],
-      assetPackage: _kGalleryAssetsPackage,
-      title: 'Chennai',
-      caption: 'Scooters',
-    ),
-    Photo(
-      url: photosUrls[7],
-      assetPackage: _kGalleryAssetsPackage,
-      title: 'Chettinad',
-      caption: 'Silk Maker',
-    ),
-    Photo(
-      url: photosUrls[8],
-      assetPackage: _kGalleryAssetsPackage,
-      title: 'Chettinad',
-      caption: 'Lunch Prep',
-    ),
-    Photo(
-      url: photosUrls[9],
-      assetPackage: _kGalleryAssetsPackage,
-      title: 'Tanjore',
-      caption: 'Market',
-    ),
-    Photo(
-      url: photosUrls[10],
-      assetPackage: _kGalleryAssetsPackage,
-      title: 'Pondicherry',
-      caption: 'Beach',
-    ),
-    Photo(
-      url: photosUrls[11],
-      assetPackage: _kGalleryAssetsPackage,
-      title: 'Pondicherry',
-      caption: 'Fisherman',
-    ),
   ];
 
   void changeTileStyle(GridDemoTileStyle value) {
@@ -356,38 +346,37 @@ class GridListDemoState extends State<GridListDemo> {
           ),
         ],
       ),
-      body: Column(
-        children: <Widget>[
-          Expanded(
-            child: SafeArea(
-              top: false,
-              bottom: false,
-              child: GridView.count(
-                crossAxisCount: (orientation == Orientation.portrait) ? 2 : 3,
-                mainAxisSpacing: 4.0,
-                crossAxisSpacing: 4.0,
-                padding: const EdgeInsets.all(4.0),
-                childAspectRatio: (orientation == Orientation.portrait) ? 1.0 : 1.3,
-                children: photos.map<Widget>((Photo photo) {
-                  return GridDemoPhotoItem(
-                    photo: photo,
-                    tileStyle: _tileStyle,
-                    onBannerTap: (Photo photo) {
-                      setState(() {
-                        if (GridDemoTileStyle.deleteMode == _tileStyle) {
-                          photos.remove(photo);
-                        } else {
-                          photo.isFavorite = !photo.isFavorite;
-                        }
-                      });
-                    },
-                  );
-                }).toList(),
+      body:
+      Column( children: <Widget>[
+         Expanded( child: SafeArea(
+                        top: false,
+                        bottom: false,
+                        child: GridView.count(
+                      crossAxisCount:  (orientation == Orientation.portrait) ? 2 : 3,
+                        mainAxisSpacing: 4.0,
+                        crossAxisSpacing: 4.0,
+                        padding: const EdgeInsets.all(4.0),
+                    childAspectRatio: (orientation == Orientation.portrait) ? 1.0 : 1.3,
+                    children: photos.map<Widget>((Photo photo) {
+                      return GridDemoPhotoItem(
+                        photo: photo,
+                        tileStyle: _tileStyle,
+                        onBannerTap: (Photo photo) {
+                          setState(() {
+                            if (GridDemoTileStyle.deleteMode == _tileStyle) {
+                              photos.remove(photo);
+                            } else {
+                              photo.isFavorite = !photo.isFavorite;
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ],
-      ),
+            ],
+    ),
     );
   }
 }
@@ -405,4 +394,23 @@ List<String> photosUrls = <String>[
   'https://images.pexels.com/photos/9166412/pexels-photo-9166412.jpeg?auto=compress&cs=tinysrgb&dpr=2&w=500',
   'https://images.pexels.com/photos/2681319/pexels-photo-2681319.jpeg?auto=compress&cs=tinysrgb&dpr=2&w=500',
   'https://images.pexels.com/photos/6243804/pexels-photo-6243804.jpeg?auto=compress&cs=tinysrgb&dpr=2&w=500',
+  'https://image2.ljcdn.com/utopia-file/p1/215a16c18b2c6ad44a61ff077f12b64fd937398c-3840-2560!m_fit,w_2560,o_auto,f_jpg',
+  'https://image2.ljcdn.com/utopia-file/p1/215a16c18b2c6ad44a61ff077f12b64fd937398c-3840-2560!m_fit,w_2560,o_auto,f_jpg',
+  'https://image2.ljcdn.com/utopia-file/p1/d7884f6c4cf7e43e826018a8576e6bf53d07fe40-5424-3632!m_fit,w_2560,o_auto,f_jpg',
+  'https://image2.ljcdn.com/utopia-file/p1/e279f611cea722a7225ef581bace829d68dd3463-5328-4000!m_fit,w_2560,o_auto,f_jpg',
+  'https://image2.ljcdn.com/utopia-file/p1/8834c7631bfddee25391079b6951e1d6c10c40b8-2560-1920!m_fit,w_2560,o_auto,f_jpg',
+  'https://image2.ljcdn.com/utopia-file/p1/90aacb7b156c0670dd8fe203a6cf372d5b4bc1ca-5376-3314!m_fit,w_2560,o_auto,f_jpg',
+  'https://image2.ljcdn.com/utopia-file/p1/d57bad88338fcdba2405a02dda5415b73e7cbb4c-6480-4320!m_fit,w_2560,o_auto,f_jpg',
+  'https://image2.ljcdn.com/utopia-file/p1/b7e71ed8ec092e6b25ca4315d43b11aee85a76b7-2560-1707!m_fit,w_2560,o_auto,f_jpg',
+  'https://image2.ljcdn.com/utopia-file/p1/a2909d3b7d35165daf0cea9697df470e3e61d747-5973-4480!m_fit,w_2560,o_auto,f_jpg',
+  'https://image2.ljcdn.com/utopia-file/p1/d5202b01af7a978a9f4332208780265bf1ac3617-5760-3840!m_fit,w_2560,o_auto,f_jpg',
+  'https://image2.ljcdn.com/utopia-file/p1/51392b46baa507e7b97ad9fadbdb0bf6bcf0bc06-2667-2000!m_fit,w_2560,o_auto,f_jpg',
+  'https://image2.ljcdn.com/utopia-file/p1/861520ecf875fc750de9565fb01548e7e94fa95a-5994-3996!m_fit,w_2560,o_auto,f_jpg',
+  'https://image2.ljcdn.com/utopia-file/p1/3e1ebe4a9bb66b1322bd90e5b185b8e0d9661dc1-5472-3648!m_fit,w_2560,o_auto,f_jpg',
+  'https://image2.ljcdn.com/utopia-file/p1/5e1d544c33118451ebaca9aae349a9c704e5cb2c-8448-6336!m_fit,w_2560,o_auto,f_jpg',
+  'https://image2.ljcdn.com/utopia-file/p1/e7eeeb5b4a079a0e4f51c7c955da85464f2e93a5-2400-1800!m_fit,w_2560,o_auto,f_jpg',
+  "https://image2.ljcdn.com/utopia-file/p1/215a16c18b2c6ad44a61ff077f12b64fd937398c-3840-2560!m_fit,w_2560,o_auto,f_jpg",
+  "https://image2.ljcdn.com/utopia-file/p1/d7884f6c4cf7e43e826018a8576e6bf53d07fe40-5424-3632!m_fit,w_2560,o_auto,f_jpg",
+  "https://image2.ljcdn.com/utopia-file/p1/e279f611cea722a7225ef581bace829d68dd3463-5328-4000!m_fit,w_2560,o_auto,f_jpg",
+  "https://image2.ljcdn.com/utopia-file/p1/90aacb7b156c0670dd8fe203a6cf372d5b4bc1ca-5376-3314!m_fit,w_2560,o_auto,f_jpg",
 ];

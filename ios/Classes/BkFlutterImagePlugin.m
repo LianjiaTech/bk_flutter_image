@@ -1,23 +1,23 @@
 #import "BkFlutterImagePlugin.h"
 #import "BkImageRenderWorker.h"
+#import "BkFlutterPixelBufferCache.h"
+
 
 @interface BkFlutterImagePlugin ()
 
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, BkImageRenderWorker *> *workers;
-@property (nonatomic, strong) NSObject <FlutterTextureRegistry> *textures;
-@property (nonatomic, strong) dispatch_queue_t queue;
+@property (nonatomic, weak) NSObject <FlutterTextureRegistry> *textures;
 
 @end
 
 @implementation BkFlutterImagePlugin
 
-+ (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar
-{
++ (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar{
     FlutterMethodChannel *channel = [FlutterMethodChannel
                methodChannelWithName:@"bk_flutter_image"
                binaryMessenger:[registrar messenger]];
-       BkFlutterImagePlugin *instance = [[BkFlutterImagePlugin alloc] initWithTextures:[registrar textures]];
-       [registrar addMethodCallDelegate:instance channel:channel];
+    BkFlutterImagePlugin *instance = [[BkFlutterImagePlugin alloc] initWithTextures:[registrar textures]];
+    [registrar addMethodCallDelegate:instance channel:channel];
 }
 
 - (instancetype)initWithTextures:(NSObject <FlutterTextureRegistry> *)textures {
@@ -25,35 +25,40 @@
     if (self) {
         _workers = [[NSMutableDictionary alloc] init];
         _textures = textures;
-        _queue = dispatch_queue_create("method_handler_queue", DISPATCH_QUEUE_SERIAL);
-
     }
     return self;
 }
 
 - (void)handleMethodCall:(FlutterMethodCall *)call result:(FlutterResult)result {
-    __weak typeof(self) weakSelf = self;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if ([@"create" isEqualToString:call.method]) {
-            NSInteger __block textureId = -1;
-            id <FlutterTextureRegistry> __weak registry = strongSelf.textures;
-            BkImageRenderWorker *worker = [[BkImageRenderWorker alloc] initWithParams:[self convertToNoNullDic:call.arguments] onNewFrame:^(bool success) {
-                [registry textureFrameAvailable:textureId];
-            }];
-            textureId = (NSInteger) [strongSelf.textures registerTexture:worker];
-            [worker startWork];
-            result(@(textureId));
-        } else if ([@"dispose" isEqualToString:call.method]) {
-            NSNumber *textureId = call.arguments[@"textureId"];
-            if (![textureId isKindOfClass:[NSNull class]] && textureId.integerValue != -1) {
-                [strongSelf.textures unregisterTexture:[textureId integerValue]];
-            }
-            result(nil);
-        } else {
-            result(FlutterMethodNotImplemented);
+    if ([@"create" isEqualToString:call.method]) {
+        NSInteger __block textureId = -1;
+        id <FlutterTextureRegistry> __weak registry = self.textures;
+        BkImageRenderWorker *worker = [[BkImageRenderWorker alloc] initWithParams:[self convertToNoNullDic:call.arguments] onNewFrame:^(NSError * error, CGSize size, BOOL isFullPixel) {
+            NSMutableDictionary *textureInfo = [NSMutableDictionary dictionary];
+            [textureInfo setValue:error.userInfo[NSLocalizedDescriptionKey] ?: @"" forKey:@"error"];
+            [textureInfo setValue:@(error ? -1 : textureId) forKey:@"textureId"];
+            [textureInfo setValue:@(size.width) forKey:@"textureWidth"];
+            [textureInfo setValue:@(size.height) forKey:@"textureHeight"];
+            [textureInfo setValue:@(isFullPixel) forKey:@"isFullPixel"];
+            result([[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:textureInfo options:NSJSONWritingPrettyPrinted error:nil] encoding:NSUTF8StringEncoding]);
+            [registry textureFrameAvailable:textureId];
+        }];
+        textureId = (NSInteger) [self.textures registerTexture:worker];
+        [worker startWork];
+    } else if ([@"dispose" isEqualToString:call.method]) {
+        NSNumber *textureId = call.arguments[@"textureId"];
+        if (![textureId isKindOfClass:[NSNull class]] && textureId.integerValue != -1) {
+            [self.textures unregisterTexture:[textureId integerValue]];
         }
-    });
+        result(nil);
+    } else if ([@"setCacheSize" isEqualToString:call.method]) {
+        NSDictionary *cacheData = [self convertToNoNullDic:call.arguments];
+        [[BkFlutterPixelBufferCache sharedInstance] setDiskCacheMaxSize:[cacheData[@"diskMaxSize"] unsignedIntValue]];
+        [[BkFlutterPixelBufferCache sharedInstance] setMemoryCacheMaxSize:[cacheData[@"memoryMaxSize"] unsignedIntValue]];
+        result(nil);
+    } else {
+        result(FlutterMethodNotImplemented);
+    }
 }
 
 - (NSString *)stringFromDictionary:(NSDictionary *)dict {

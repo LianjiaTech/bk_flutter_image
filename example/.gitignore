@@ -29,13 +29,11 @@
 .pub-cache/
 .pub/
 /build/
-
+ios/Pods/*
+ios/Runner.xcworkspace/xcuserdata/*
+ios/.symlinks/
 # Web related
 lib/generated_plugin_registrant.dart
 
 # Exceptions to above rules.
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
-
-android/local.properties
-ios/Flutter/flutter_export_environment.sh
-pubspec.lock

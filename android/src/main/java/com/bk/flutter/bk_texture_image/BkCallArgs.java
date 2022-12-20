@@ -10,7 +10,6 @@ public class BkCallArgs {
   String url;
   int width;
   int height;
-  int imageFitMode;
   boolean autoResize;
 
   long textureId;
@@ -27,10 +26,6 @@ public class BkCallArgs {
     if (call.argument("height") != null) {
       double h = call.argument("height");
       this.height = (int) h;
-    }
-
-    if (call.argument("imageFitMode") != null) {
-      this.imageFitMode = call.argument("imageFitMode");
     }
 
     if (call.argument("autoResize") != null) {
@@ -51,13 +46,16 @@ public class BkCallArgs {
     return String.valueOf(url);
   }
 
+  public boolean hasReusableTexture(BkCallArgs targetArgs) {
+    return (this.url.equals(targetArgs.url) && width >= targetArgs.width && height >= targetArgs.height);
+  }
+
   @Override
   public String toString() {
     return "CallArgs{" +
         "url='" + url + '\'' +
         ", width=" + width +
         ", height=" + height +
-        ", imageFitMode=" + imageFitMode +
         ", autoResize=" + autoResize +
         ", textureId=" + textureId +
         '}';
